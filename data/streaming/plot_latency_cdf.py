@@ -58,9 +58,24 @@ def plot_latencies(all_latencies, save_filename):
     else:
         plt.show()
 
-def main(flink_filename, lineage_stash_filename, save_filename):
+def main(directory, save_filename):
+    flink_filename = None
+    lineage_stash_filename = None
+    writefirst_filename = None
+    for filename in os.listdir(directory):
+        if filename.startswith('flink-latency'):
+            assert flink_filename is None
+            flink_filename = os.path.join(directory, filename)
+        elif filename.startswith('latency'):
+            assert lineage_stash_filename is None
+            lineage_stash_filename = os.path.join(directory, filename)
+        elif filename.startswith('writefirst-latency'):
+            assert writefirst_filename is None
+            writefirst_filename = os.path.join(directory, filename)
+
     filenames = [
         ('Flink', flink_filename),
+        ('WriteFirst', writefirst_filename),
         ('Lineage stash', lineage_stash_filename),
     ]
     all_latencies = []
@@ -85,17 +100,13 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Benchmarks.')
     parser.add_argument(
-            '--flink-filename',
+            '--directory',
             type=str,
-            default='flink-latency-32-workers-320000-tput-Aug-14-01-32-12.csv')
-    parser.add_argument(
-            '--lineage-stash-filename',
-            type=str,
-            default='latency-32-workers-8-shards-1000-batch-320000-tput-Aug-14-01-34-31.csv')
+            default='32-workers')
     parser.add_argument(
             '--save-filename',
             type=str,
             default=None)
     args = parser.parse_args()
 
-    main(args.flink_filename, args.lineage_stash_filename, args.save_filename)
+    main(args.directory, args.save_filename)
