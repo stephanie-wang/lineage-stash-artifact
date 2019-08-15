@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 
 
-def parse_latencies(filename, flink, downsample_factor):
+def parse_latencies(filename, flink):
     operator = None
     points = []
     first_timestamp = None
@@ -20,7 +20,7 @@ def parse_latencies(filename, flink, downsample_factor):
 
             if operator is None:
                 operator = row['sink_id']
-                first_timestamp = float(row['cur_time'])
+                first_timestamp = float(row['timestamp'])
                 max_timestamp = record_timestamp
 
 
@@ -35,7 +35,7 @@ def parse_latencies(filename, flink, downsample_factor):
                         continue
 
                 latency = float(row['latency'])
-                current_time = float(row['cur_time'])
+                current_time = record_timestamp
                 current_time -= first_timestamp
                 if in_seconds:
                     latency *= 1000
@@ -45,8 +45,7 @@ def parse_latencies(filename, flink, downsample_factor):
                 points.append((current_time, latency))
             else:
                 break
-    # Downsample.
-    points = [points[i] for i in range(0, len(points), downsample_factor)]
+    points.sort(key=lambda item: item[0])
     return points
 
 def parse_throughputs(filename):
@@ -158,7 +157,7 @@ def mean_failure_latency(latencies):
             failure_latencies.append(latency)
     return np.mean(failure_latencies)
 
-def main(directory, save_filename):
+def main(directory, save_filename, global_downsample):
     flink_filename = None
     lineage_stash_filename = None
     writefirst_filename = None
@@ -181,30 +180,37 @@ def main(directory, save_filename):
         ('Flink',
         flink_filename,
         flink_throughput_filename,
-        True,
-        10),
+        True),
         ('WriteFirst',
         writefirst_filename,
         writefirst_throughput_filename,
-        False,
-        10),
+        False),
         ('Lineage stash',
         lineage_stash_filename,
         lineage_stash_throughput_filename,
-        False,
-        10),
+        False),
     ]
     stats = []
-    for label, latency_filename, throughput_filename, is_flink, downsample in FILENAMES:
-        latencies = parse_latencies(latency_filename, is_flink, downsample)
+    for label, latency_filename, throughput_filename, is_flink in FILENAMES:
+        latencies = parse_latencies(latency_filename, is_flink)
+        print(label, len(latencies), "latency samples")
         throughputs = parse_throughputs(throughput_filename)
         stats.append((label, latencies, throughputs))
+
+    # Downsample so that all jobs have the same number of latency samples.
+    min_latency_samples = min(len(latencies) for _, latencies, _ in stats)
+    for i, stat in enumerate(stats):
+        label, latencies, throughputs = stat
+        downsample_factor = len(latencies) // min_latency_samples * global_downsample
+        latencies = [latencies[i] for i in range(0, len(latencies), downsample_factor)]
+        stats[i] = (label, latencies, throughputs)
+        print("Downsampled", label, "by", downsample_factor, "to", len(latencies), "records")
 
     plot_latencies(stats, save_filename)
     plot_throughputs(stats, save_filename)
 
     for label, latency, _ in stats:
-        print(label, mean_failure_latency(latency))
+        print(label, "mean latency during recovery:", mean_failure_latency(latency))
 
 
 if __name__ == '__main__':
@@ -215,9 +221,14 @@ if __name__ == '__main__':
             type=str,
             default='32-workers')
     parser.add_argument(
+            '--downsample',
+            type=int,
+            default=10,
+            help="The amount to downsample all latency samples by.")
+    parser.add_argument(
             '--save-filename',
             type=str,
             default=None)
     args = parser.parse_args()
 
-    main(args.directory, args.save_filename)
+    main(args.directory, args.save_filename, args.downsample)
