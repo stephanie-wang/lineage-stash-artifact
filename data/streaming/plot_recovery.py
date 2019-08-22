@@ -163,13 +163,16 @@ def main(directory, save_filename, global_downsample):
     writefirst_filename = None
     for filename in os.listdir(directory):
         if filename.startswith('failure-flink-latency'):
-            assert flink_filename is None
+            if flink_filename is not None:
+                print("WARNING: multiple Flink filenames found, skipping {}".format(flink_filename))
             flink_filename = os.path.join(directory, filename)
         elif filename.startswith('failure-latency'):
-            assert lineage_stash_filename is None
+            if lineage_stash_filename is None:
+                print("WARNING: multiple lineage stash filenames found, skipping {}".format(lineage_stash_filename))
             lineage_stash_filename = os.path.join(directory, filename)
         elif filename.startswith('writefirst-failure-latency'):
-            assert writefirst_filename is None
+            if writefirst_filename is None:
+                print("WARNING: multiple WriteFirst filenames found, skipping {}".format(writefirst_filename))
             writefirst_filename = os.path.join(directory, filename)
 
     flink_throughput_filename = flink_filename.replace('latency', 'throughput')
