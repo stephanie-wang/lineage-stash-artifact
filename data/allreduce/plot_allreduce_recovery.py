@@ -44,9 +44,9 @@ def parse_lineage_stash(directory):
         if not filename.startswith('failure-latency'):
             continue
         if '0-gcs-' in filename:
-            latencies = writefirst_latencies
-        else:
             latencies = lineage_stash_latencies
+        else:
+            latencies = writefirst_latencies
 
         with open(os.path.join(directory, filename), 'r') as f:
             for line in f.readlines():
