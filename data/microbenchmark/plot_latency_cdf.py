@@ -94,12 +94,15 @@ def plot_rows(fields, results, save_filename, num_nodes):
         labels.append(label_to_str(label, num_nodes))
 
 
-    plt.ylabel('CDF')
-    plt.xlabel('Task latency (ms)')
-    plt.legend(lines, labels, loc='lower right')
     font = {'size': 18}
     plt.rc('font', **font)
-    plt.xlim(0, 25)
+
+    plt.ylabel('CDF', fontsize=18)
+    plt.xlabel('Task latency (ms)', fontsize=18)
+    plt.legend(lines, labels, loc='lower right')
+    plt.xlim(0, 20)
+    plt.xticks(range(0, 25, 5), fontsize=18)
+    plt.yticks(fontsize=18)
     plt.tight_layout()
 
     if save_filename is not None:

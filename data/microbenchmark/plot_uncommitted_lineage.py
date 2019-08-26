@@ -46,10 +46,13 @@ def parse_lineage(directory):
             for num_tasks, size in lineage_sizes.items():
                 aggregate_sizes[num_tasks] += size
 
-        sizes, weights = zip(*aggregate_sizes.items())
-        lineage_size_mean = np.average(sizes, weights=weights)
-        lineage_size_std = np.sqrt(np.average((sizes - lineage_size_mean) ** 2, weights=weights))
-        results[label] = (lineage_size_mean, lineage_size_std)
+        unpacked = []
+        for size, weight in aggregate_sizes.items():
+            unpacked += [size] * weight
+        median = np.median(unpacked)
+        quantile_1 = np.quantile(unpacked, 0.25)
+        quantile_3 = np.quantile(unpacked, 0.75)
+        results[label] = (median, median - quantile_1, quantile_3 - median)
 
         if num_nodes is None:
             num_nodes = label.workers
@@ -62,9 +65,8 @@ def plot(rows, save_filename):
 
     for label, row in rows:
         x, ys = zip(*row)
-        y = [point[0] for point in ys]
-        errs = [point[1] for point in ys]
-        plt.errorbar(x, y, yerr=errs, capsize=3, linewidth=2, label="$f$={}".format(label))
+        y, y1, y2 = zip(*ys)
+        plt.errorbar(x, y, yerr=[y1, y2], capsize=3, linewidth=2, label="$f$={}".format(label))
 
     plt.ylabel('Uncommitted\nlineage size')
     plt.xlabel('Task duration (ms)')
