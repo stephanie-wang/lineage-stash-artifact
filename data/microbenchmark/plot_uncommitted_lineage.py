@@ -68,11 +68,13 @@ def plot(rows, save_filename):
         y, y1, y2 = zip(*ys)
         plt.errorbar(x, y, yerr=[y1, y2], capsize=3, linewidth=2, label="$f$={}".format(label))
 
-    plt.ylabel('Uncommitted\nlineage size')
-    plt.xlabel('Task duration (ms)')
-    plt.legend()
     font = {'size': 18}
     plt.rc('font', **font)
+    plt.ylabel('Uncommitted\nlineage size', fontsize=18)
+    plt.xlabel('Task duration (ms)', fontsize=18)
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.legend()
     plt.tight_layout()
 
     if save_filename is not None:
