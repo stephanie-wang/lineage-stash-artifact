@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 
-WARMUP_SECONDS = 30
+WARMUP_SECONDS = 35
 
 def parse_latencies(filename):
     operator = None
@@ -39,14 +39,19 @@ def parse_latencies(filename):
 def plot_latencies(all_latencies, save_filename):
     fig, ax = plt.subplots(figsize=(4, 2))
     
+    lines = []
+    labels = []
     for label, latencies in all_latencies:
-        n, bin, patches = plt.hist(latencies, 1000, normed=True, cumulative=True, label=label,
+        n, bin, patches = plt.hist(latencies, 1000, normed=True, cumulative=True,
                                    histtype='step', alpha=0.8, linewidth=2)
         patches[0].set_xy(patches[0].get_xy()[:-1])
+        line, = plt.plot([], [], color=patches[0].get_edgecolor())
+        lines.append(line)
+        labels.append(label)
     
     plt.ylabel('CDF')
     plt.xlabel('Latency (ms)')
-    plt.legend(loc='lower right')
+    plt.legend(lines, labels, loc='lower right')
     font = {'size': 18}
     plt.rc('font', **font)
     plt.xlim(0,500)

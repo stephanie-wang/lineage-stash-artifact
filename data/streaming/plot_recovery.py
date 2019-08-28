@@ -6,9 +6,12 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 
 
-def parse_latencies(filename, flink):
+START_X = 20
+END_X = 115
+
+def parse_latencies(filename, flink, flink_offset):
     operator = None
-    points = []
+    points = defaultdict(list)
     first_timestamp = None
     max_timestamp = None
     with open(filename, 'r') as f:
@@ -42,13 +45,20 @@ def parse_latencies(filename, flink):
                 else:
                     current_time /= 1000
                 current_time = int(current_time)
-                points.append((current_time, latency))
+                if flink:
+                    current_time += flink_offset
+                if current_time > START_X and current_time < END_X:
+                    points[current_time].append(latency)
             else:
                 break
-    points.sort(key=lambda item: item[0])
-    return points
+    means = []
+    for time, latencies in points.items():
+        median = np.median(latencies)
+        means.append((time, median, median - np.quantile(latencies, 0.25), np.quantile(latencies, 0.75) - median, latencies))
+    means.sort(key=lambda item: item[0])
+    return means
 
-def parse_throughputs(filename):
+def parse_throughputs(filename, flink, flink_offset):
     operator = None
     first_timestamp = None
     max_timestamp = None
@@ -80,7 +90,10 @@ def parse_throughputs(filename):
                     timestamp /= 1000
                 timestamp = int(timestamp)
                 throughput = float(row['throughput'])
-                operator_throughputs[operator][timestamp].append(throughput)
+                if flink:
+                    timestamp += flink_offset
+                if timestamp > START_X and timestamp < END_X:
+                    operator_throughputs[operator][timestamp].append(throughput)
     throughputs = defaultdict(int)
     for operator_id, operator_throughput in operator_throughputs.items():
         operator_throughput = dict((timestamp, np.mean(tputs)) for timestamp, tputs in operator_throughput.items())
@@ -112,11 +125,14 @@ def parse_throughputs(filename):
 def plot_latencies(rows, save_filename):
     fig, ax = plt.subplots()
     for label, row, _ in rows:
-        x, y = zip(*row)
-        plt.plot(x, y, label=label, linewidth=2)
+        x, y, z1, z2, _ = zip(*row)
+        ax.errorbar(x, y, [z1, z2], label=label, linewidth=1, capsize=1.5)
+        for i, j, k, l in zip(x, y, z1, z2):
+            print(label, i, j, k, l)
+    #ax.axvline(45, linewidth=2, color='red')
     
     plt.ylabel('Latency (ms)')
-    plt.xlabel('Time since start (s)')
+    plt.xlabel('Time (s)')
     plt.legend()
     font = {'size': 24}
     plt.rc('font', **font)
@@ -134,6 +150,9 @@ def plot_throughputs(rows, save_filename):
         x, y = zip(*row)
         y = [point / 100000 for point in y]
         plt.plot(x, y, label=label, linewidth=2)
+        for i, j in zip(x, y):
+            print(label, i, j)
+    #ax.axvline(45, linewidth=2, color='red')
     
     plt.ylabel('Throughput \n(100k records/s)')
     plt.xlabel('Time since start (s)')
@@ -148,16 +167,19 @@ def plot_throughputs(rows, save_filename):
         plt.show()
 
 
-def mean_failure_latency(latencies):
-    failure_time = 45
-    recovery_time = 64
+def split_latencies(all_latencies):
+    failure_time = 48
+    recovery_time = 100
     failure_latencies = []
-    for timestamp, latency in latencies:
+    normal_latencies = []
+    for timestamp, _, _, _, latencies in all_latencies:
         if timestamp > failure_time and timestamp < recovery_time:
-            failure_latencies.append(latency)
-    return np.mean(failure_latencies)
+            failure_latencies += latencies
+        if timestamp > recovery_time:
+            normal_latencies += latencies
+    return failure_latencies, normal_latencies
 
-def main(directory, save_filename, global_downsample):
+def main(directory, save_filename, flink_offset):
     flink_filename = None
     lineage_stash_filename = None
     writefirst_filename = None
@@ -195,25 +217,20 @@ def main(directory, save_filename, global_downsample):
     ]
     stats = []
     for label, latency_filename, throughput_filename, is_flink in FILENAMES:
-        latencies = parse_latencies(latency_filename, is_flink)
+        latencies = parse_latencies(latency_filename, is_flink, flink_offset)
         print(label, len(latencies), "latency samples")
-        throughputs = parse_throughputs(throughput_filename)
+        throughputs = parse_throughputs(throughput_filename, is_flink, flink_offset)
         stats.append((label, latencies, throughputs))
-
-    # Downsample so that all jobs have the same number of latency samples.
-    min_latency_samples = min(len(latencies) for _, latencies, _ in stats)
-    for i, stat in enumerate(stats):
-        label, latencies, throughputs = stat
-        downsample_factor = len(latencies) // min_latency_samples * global_downsample
-        latencies = [latencies[i] for i in range(0, len(latencies), downsample_factor)]
-        stats[i] = (label, latencies, throughputs)
-        print("Downsampled", label, "by", downsample_factor, "to", len(latencies), "records")
 
     plot_latencies(stats, save_filename)
     plot_throughputs(stats, save_filename)
 
     for label, latency, _ in stats:
-        print(label, "mean latency during recovery:", mean_failure_latency(latency))
+        failure_latencies, normal_latencies = split_latencies(latency)
+        print(label, "mean latency during recovery:", np.mean(failure_latencies))
+        print(label, "mean latency during execution:", np.mean(normal_latencies))
+        print(label, "max latency:", np.max(failure_latencies))
+        print(label, "min latency:", np.min(normal_latencies))
 
 
 if __name__ == '__main__':
@@ -224,14 +241,14 @@ if __name__ == '__main__':
             type=str,
             default='32-workers')
     parser.add_argument(
-            '--downsample',
+            '--flink-offset',
             type=int,
-            default=10,
-            help="The amount to downsample all latency samples by.")
+            default=0,
+            help="When plotting, the amount to offset Flink by. This is used to align the plots since the nodes do not fail at exactly the specified time.")
     parser.add_argument(
             '--save-filename',
             type=str,
             default=None)
     args = parser.parse_args()
 
-    main(args.directory, args.save_filename, args.downsample)
+    main(args.directory, args.save_filename, args.flink_offset)
